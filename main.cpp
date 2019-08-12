@@ -1,5 +1,6 @@
 /*
- * Copyright (c) 2013, Ighor July, julyighor@gmail.com
+ * Copyright (c) 2019, Ighor July, julyighor@gmail.com
+ * https://github.com/JulyIghor/TurnOffXboxController
  * Donate Bitcoin 1PswUbmymM22Xx7qi7xuMwRKyTc7sf62Zb
  * All rights reserved.
 
@@ -34,23 +35,38 @@
 
 #pragma comment(lib, "XInput.lib")
 
-int main(int argc, char *argv[])
+int main(void)
 {
-	HINSTANCE hXInputDLL = LoadLibraryA("XInput1_3.dll");
-	if (hXInputDLL == NULL)return 1;
+    HINSTANCE hXInputDLL = LoadLibraryA("XInput1_3.dll");
 
-	for(short i=0; i<4; ++i)
-	{
-		XINPUT_STATE state;
-		memset(&state, 0, sizeof(XINPUT_STATE));
-		if(XInputGetState(i,&state)==ERROR_SUCCESS)
-		{
-			typedef DWORD (WINAPI* XInputPowerOffController_t)(DWORD i);
-			XInputPowerOffController_t realXInputPowerOffController=(XInputPowerOffController_t) GetProcAddress(hXInputDLL, (LPCSTR) 103);
-			realXInputPowerOffController(i);
-		}
-		ZeroMemory(&state, sizeof(XINPUT_STATE));
-	}
-	FreeLibrary(hXInputDLL);
-	return 0;
+    if (hXInputDLL == NULL)
+    {
+        MessageBox(NULL, "Xbox 360 controller driver not found\n\n"
+                   "If your controller is not 360 model, just hold X button to turn it off", "Turn off Xbox 360 controller ",
+                   MB_OK);
+        return 1;
+    }
+
+    for (short i = 0; i < 4; ++i)
+    {
+        XINPUT_STATE state;
+        memset(&state, 0, sizeof(XINPUT_STATE));
+
+        if (XInputGetState(i, &state) == ERROR_SUCCESS)
+        {
+            typedef DWORD(WINAPI * XInputPowerOffController_t)(DWORD i);
+            XInputPowerOffController_t realXInputPowerOffController = (XInputPowerOffController_t)GetProcAddress(hXInputDLL, (LPCSTR)103);
+            realXInputPowerOffController(i);
+        }
+
+        ZeroMemory(&state, sizeof(XINPUT_STATE));
+    }
+
+    FreeLibrary(hXInputDLL);
+
+    //Killing own process since XInput1_3.dll threads stuck and won't exit on Windows 10
+    //If you know another way to fix it, feel free to send commit here https://github.com/JulyIghor/TurnOffXboxController
+    TerminateProcess(OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, TRUE, GetCurrentProcessId()), 0);
+
+    return 0;
 }
