@@ -35,18 +35,15 @@
 
 #pragma comment(lib, "XInput.lib")
 
-int main(void)
+// context menu IDs
+#define ID_EXIT 2000
+#define ID_TURN_OFF_CONTROLLERS 2001
+
+const char *gClassName = "XboxTurnOffController";
+const char *gProgramName = "Turn Off Xbox 360 Controller";
+
+void turnOffController(HINSTANCE hXInputDLL)
 {
-    HINSTANCE hXInputDLL = LoadLibraryA("XInput1_3.dll");
-
-    if (hXInputDLL == NULL)
-    {
-        MessageBox(NULL, "Xbox 360 controller driver not found\n\n"
-                   "If your controller is not 360 model, just hold X button to turn it off", "Turn off Xbox 360 controller ",
-                   MB_OK);
-        return 1;
-    }
-
     for (short i = 0; i < 4; ++i)
     {
         XINPUT_STATE state;
@@ -61,6 +58,113 @@ int main(void)
 
         ZeroMemory(&state, sizeof(XINPUT_STATE));
     }
+}
+
+LRESULT WINAPI wndProcedure(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    NOTIFYICONDATAA nid = {
+        .cbSize { sizeof(NOTIFYICONDATA) },
+        .hWnd { hWnd },
+        .uID { 1 },
+        .uFlags { NIF_MESSAGE | NIF_ICON | NIF_TIP },
+        .uCallbackMessage { WM_USER },
+        .hIcon { LoadIcon(GetModuleHandle(NULL), "IDI_ICON1") },
+    };
+
+    strncpy(nid.szTip, gProgramName, 64);
+
+    switch (msg)
+    {
+    case WM_CREATE: {
+        if (!Shell_NotifyIcon(NIM_ADD, &nid))
+        {
+            MessageBox(hWnd, "Failed to display icon in system tray", gProgramName, MB_OK | MB_ICONEXCLAMATION);
+        }
+        break;
+    }
+
+    case WM_COMMAND:
+        if (HIWORD(wParam) == 0 && LOWORD(wParam) == ID_EXIT)
+        {
+            Shell_NotifyIcon(NIM_DELETE, &nid);
+            DestroyWindow(hWnd);
+        }
+        else if (HIWORD(wParam) == 0 && LOWORD(wParam) == ID_TURN_OFF_CONTROLLERS)
+        {
+            HINSTANCE hXInputInstance = *(HINSTANCE*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+            turnOffController(hXInputInstance);
+        }
+        break;
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+
+    // callback message from notification
+    case WM_USER:
+        if (LOWORD(lParam) == WM_RBUTTONDOWN) {
+            HMENU hPopup = CreatePopupMenu();
+            InsertMenu(hPopup, 0, MF_BYPOSITION | MF_STRING, ID_EXIT, "Exit");
+            InsertMenu(hPopup, 0, MF_BYPOSITION | MF_STRING, ID_TURN_OFF_CONTROLLERS, "Turn off controllers");
+
+            SetForegroundWindow(hWnd);
+
+            POINT pt;
+            GetCursorPos(&pt);
+
+            TrackPopupMenu(hPopup, TPM_BOTTOMALIGN | TPM_RIGHTALIGN, pt.x, pt.y, 0, hWnd, NULL);
+        }
+        break;
+
+    default:
+        return DefWindowProc(hWnd, msg, wParam, lParam);
+    }
+
+    return 0;
+}
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+    WNDCLASSEX wndClass {
+        .cbSize { sizeof(WNDCLASSEX) },
+        .style { 0 },
+        .lpfnWndProc { wndProcedure },
+        .hInstance { hInstance },
+        .lpszClassName { gClassName },
+    };
+
+    if (!RegisterClassEx(&wndClass))
+    {
+        MessageBox(NULL, "wndClass registration failed\n", gProgramName, MB_OK | MB_ICONEXCLAMATION);
+        return 1;
+    }
+
+    HWND hWnd = CreateWindowEx(0, gClassName, gProgramName, 0, 0, 0, 0, 0, NULL, NULL, hInstance, NULL);
+
+    if (!hWnd)
+    {
+        MessageBox(NULL, "Window creation failed\n", gProgramName, MB_OK | MB_ICONEXCLAMATION);
+        return 1;
+    }
+
+    HINSTANCE hXInputDLL = LoadLibraryA("XInput1_3.dll");
+
+    if (hXInputDLL == NULL)
+    {
+        MessageBox(NULL, "Xbox 360 controller driver not found\n\n"
+                   "If your controller is not 360 model, just hold X button to turn it off", gProgramName,
+                   MB_OK);
+        return 1;
+    }
+
+    SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR) &hXInputDLL);
+
+    MSG msg;
+    while (GetMessage(&msg, hWnd, 0, 0) > 0)
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
 
     FreeLibrary(hXInputDLL);
 
@@ -68,5 +172,5 @@ int main(void)
     //If you know another way to fix it, feel free to send commit here https://github.com/JulyIghor/TurnOffXboxController
     TerminateProcess(OpenProcess(SYNCHRONIZE | PROCESS_TERMINATE, TRUE, GetCurrentProcessId()), 0);
 
-    return 0;
+    return msg.wParam;
 }
